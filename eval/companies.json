@@ -1,0 +1,65 @@
+[
+  {
+    "url": "https://stripe.com",
+    "tier": "big-us",
+    "expected": {
+      "industry_keywords": ["payments", "financial", "fintech", "infrastructure"],
+      "known_executives": ["Patrick Collison", "John Collison"],
+      "recent_news_keywords_any": ["stripe", "AI", "stablecoin", "acquisition"]
+    }
+  },
+  {
+    "url": "https://figma.com",
+    "tier": "big-us",
+    "expected": {
+      "industry_keywords": ["design", "collaborative", "creative", "software"],
+      "known_executives": ["Dylan Field"],
+      "recent_news_keywords_any": ["figma", "design", "Adobe", "AI"]
+    }
+  },
+  {
+    "url": "https://www.teamleader.eu",
+    "tier": "small-be",
+    "expected": {
+      "industry_keywords": ["crm", "saas", "software", "business", "work management"],
+      "known_executives": ["Jeroen De Wit", "Robrecht Minten"],
+      "recent_news_keywords_any": ["teamleader", "crm", "smb", "growth"]
+    }
+  },
+  {
+    "url": "https://www.mollie.com",
+    "tier": "mid-eu",
+    "expected": {
+      "industry_keywords": ["payments", "fintech", "financial", "infrastructure"],
+      "known_executives": ["Koen Köppen", "Adriaan Mol"],
+      "recent_news_keywords_any": ["mollie", "payment", "europe", "merchant"]
+    }
+  },
+  {
+    "url": "https://www.intigriti.com",
+    "tier": "mid-eu",
+    "expected": {
+      "industry_keywords": ["security", "bug bounty", "cybersecurity", "crowdsourced"],
+      "known_executives": ["Stijn Jans"],
+      "recent_news_keywords_any": ["intigriti", "security", "bug", "vulnerability", "hacker"]
+    }
+  },
+  {
+    "url": "https://www.showpad.com",
+    "tier": "small-be",
+    "expected": {
+      "industry_keywords": ["sales enablement", "saas", "software", "marketing"],
+      "known_executives": ["Hendrik Isebaert", "Pieterjan Bouten"],
+      "recent_news_keywords_any": ["showpad", "sales", "enablement"]
+    }
+  },
+  {
+    "url": "https://www.bizzy.ai",
+    "tier": "obscure",
+    "expected": {
+      "industry_keywords": ["sales", "intelligence", "data", "saas"],
+      "known_executives": [],
+      "recent_news_keywords_any": ["bizzy"]
+    }
+  }
+]
