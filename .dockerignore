@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.local
+.env.*.local
+.git
+.idea
+dist
+eval/results.md
+spike
+test
+*.log
+.DS_Store
