@@ -1,0 +1,50 @@
+{
+  "header": {
+    "title": "Bizzy Enrichment",
+    "pill": "demo"
+  },
+  "gate": {
+    "title": "Bizzy Enrichment Demo",
+    "description": "Enter the demo key (shared with reviewers in the submission email).",
+    "label": "Demo key",
+    "submit": "Unlock",
+    "errors": {
+      "empty": "Enter the demo key."
+    }
+  },
+  "input": {
+    "label": "Company URL",
+    "placeholder": "https://www.vrt.be",
+    "submit": "Enrich →",
+    "submitting": "Enriching…"
+  },
+  "idle": {
+    "hint": "Enter a company URL to enrich. Try <1>vrt.be</1>."
+  },
+  "loading": {
+    "slow": "Taking longer than usual… typical enrichment is 8–12s."
+  },
+  "result": {
+    "fallbackName": "Company",
+    "noSummary": "No summary available — sources didn't support one.",
+    "whyReachOut": "Why reach out",
+    "inferred": "inferred · synthesized across sources",
+    "contacts": {
+      "title": "Contacts ({{count}})",
+      "empty": "No verified contacts found on the company's own pages. Production would use Proxycurl / PDL / Cognism for deeper lookup.",
+      "noRole": "—"
+    },
+    "news": {
+      "title": "Recent news ({{count}})",
+      "empty": "No recent news found via Tavily or Google News."
+    },
+    "debug": {
+      "summary": "{{sources}} sources · {{citations}} citations · {{elapsed}}s · {{model}}",
+      "failures": " · {{count}} failures"
+    }
+  },
+  "error": {
+    "title": "Couldn't enrich this URL.",
+    "rateLimit": "You've hit the demo rate limit (20/hour). Try again later."
+  }
+}
