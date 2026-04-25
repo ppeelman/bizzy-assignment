@@ -283,7 +283,7 @@ In `src/validate.ts`:
 
 ---
 
-## Phase 3.5 — Smoke tests (3 focused tests on the riskiest paths)
+## Phase 3.5 — Smoke tests (focused tests on the riskiest paths — ended at 5 files / 40 cases covering ssrf, validate, reconcile, auth, env)
 
 Not CI-grade coverage. Three tests on the three paths most likely to be wrong and most damaging if they are. Uses Bun's built-in test runner (`bun test`) — zero config.
 
@@ -588,7 +588,7 @@ CSS:
 Directly answers the brief's "how confident are you?" question with shipped code and actual numbers instead of claims.
 
 **File layout:**
-- `eval/companies.json` — 10 hand-verified companies with ground truth
+- `eval/companies.json` — 7 hand-verified companies with ground truth (planned for 10; ended at 7 covering big-US/mid-EU/small-BE/obscure tiers)
 - `eval/run.ts` — runner that hits the API and computes metrics
 - `eval/results.md` — committed output, human-readable table
 
