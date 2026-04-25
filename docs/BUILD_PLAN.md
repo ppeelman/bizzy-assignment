@@ -873,9 +873,9 @@ Cover in this order (the order matters — #2 is deliberately early so the revie
 
 1. **What it does** — 3 sentences. Just the product claim. No scope talk yet.
 2. **Live demo** — link to Fly.io URL + demo key (shared with reviewer in the submission email, but also included here for re-reference) + one example to try (`stripe.com`).
-3. **On scope** — one paragraph owning the decision to exceed the brief's suggested hour, what was added (eval + deploy) and why, and what was explicitly held off (streaming, Playwright fallback, paid contacts). The brief invited pushback on framing — this is the pushback, defended. Suggested framing:
+3. **On scope** — one paragraph naming the two deliberate expansions (eval + deploy) and why, and what was explicitly held off (streaming, Playwright fallback, paid contacts). Suggested framing:
 
-   > *"The brief suggested 1 hour. I took roughly 3. Here's why you should still read it: in an hour I can show you I can ship code — that's a low ceiling. In 3 hours I can show you how I'd actually build a piece of this at Bizzy scale — which is the question you're actually hiring for. I made two deliberate expansions beyond a minimal prototype: an eval harness (because 'how confident are you?' is the question you said matters most in the brief, and evals are the shipped answer), and a live Fly.io deployment (so you can hit the thing in 10 seconds). I held scope firmly against four other tempting additions — they're listed in DESIGN.md's 'considered and rejected' section. That scope discipline is what I'd bring to the job."*
+   > *"I made two deliberate expansions beyond a minimal prototype: an eval harness (because 'how confident are you?' is the question you said matters most in the brief, and evals are the shipped answer), and a live Fly.io deployment (so you can hit the thing in 10 seconds). I held scope firmly against four other tempting additions — they're listed in DESIGN.md's 'considered and rejected' section. That scope discipline is what I'd bring to the job."*
 
 4. **How to run locally** — `.env` setup, `bun install`, `bun run dev`.
 5. **How to run the eval** — `bun run eval` (against localhost) or `EVAL_TARGET=https://bizzy-demo.fly.dev EVAL_DEMO_KEY=<key> bun run eval` (against deploy).
