@@ -6,6 +6,7 @@
 </p>
 
 > **Design and approach:** see [`docs/DESIGN.md`](docs/DESIGN.md).
+> **Eval results:** see [`eval/results.md`](eval/results.md).
 
 A URL → enriched company profile, with every quotable claim tied to a source span via Claude's Citations API.
 
