@@ -55,14 +55,14 @@ console.log(JSON.stringify(response.content, null, 2));
 
 **Checkpoint:** you can point at the response object and confirm which field names exist. If the shape differs from what Phase 3 assumes, spend 10 min updating the reconciliation spec before moving on.
 
-**Also spike Cloudflare Browser Run** (5 min, same `spike/` dir):
+**Also spike Cloudflare Browser Rendering** (5 min, same `spike/` dir):
 
 ```ts
 const CF = Bun.env.CLOUDFLARE_ACCOUNT_ID;
 const TOKEN = Bun.env.CLOUDFLARE_API_TOKEN;
 const t0 = Date.now();
 const res = await fetch(
-  `https://api.cloudflare.com/client/v4/accounts/${CF}/browser-rendering/crawl`,
+  `https://api.cloudflare.com/client/v4/accounts/${CF}/browser-rendering/content`,
   {
     method: "POST",
     headers: { "Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
@@ -73,13 +73,13 @@ console.log("status", res.status, "elapsed", Date.now() - t0, "ms");
 console.log(await res.json());
 ```
 
-Verify against the real API ([https://developers.cloudflare.com/browser-run/quick-actions/crawl-endpoint/](https://developers.cloudflare.com/browser-run/quick-actions/crawl-endpoint/)):
+Verify against the real API ([https://developers.cloudflare.com/browser-rendering/rest-api/content-endpoint/](https://developers.cloudflare.com/browser-rendering/rest-api/content-endpoint/)):
 
-1. Where is the rendered HTML/text in the response? (likely `result.html` or `result.markdown`)
-2. What does failure look like (4xx vs `success: false`)?
+1. Where is the rendered HTML in the response? (it's `result` as a string — full post-JS HTML)
+2. What does failure look like (4xx vs `success: false` with `errors[]`)?
 3. Latency baseline on a single call.
 
-If the API returns markdown directly, the fallback path can skip the Cheerio re-parse. Adjust `fetchCloudflareCrawl()` in Phase 2 to whatever the real shape is.
+`/content` returns full HTML synchronously, so the fallback path runs it through Cheerio for consistent text extraction. We picked `/content` over `/crawl` because `/crawl` is async/job-based and walks multiple pages — we only need the homepage rendered, and we do `/about` + `/team` discovery ourselves with cheap Cheerio fetches.
 
 `rm -rf spike/` when both Phase 3 and the CF fallback work end-to-end.
 
@@ -156,8 +156,8 @@ Rationale: `og:site_name` is maintained for brand accuracy; `<title>` usually ha
 
 **Fetcher functions:**
 
-- `fetchHomepage(url)` — `fetch` with 5s timeout, User-Agent, follow redirects, verify final domain matches input. Parse with Cheerio, extract `<title>`, meta description, `<main>` or `<body>` text (strip scripts/nav/footer). Return `{ url, text, $, fetched_at, source: "cheerio" | "cloudflare" }` or `null`. Expose the Cheerio `$` so `extractCompanyName` and `fetchLinkedPages` can reuse it without re-parsing. **Fallback to Cloudflare Browser Run** when Cheerio extraction returns <200 chars of meaningful text — the JS-only sites case (Webflow, Framer, heavy Next.js marketing).
-- `fetchCloudflareCrawl(url)` — POST to `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/browser-rendering/crawl` with `Authorization: Bearer ${CF_TOKEN}` and `{url}` body. 15s timeout (real-browser render takes 2-5s typical, 10s+ on cold starts). Parse the response per the Phase 0 spike findings — likely `result.html` or `result.markdown`. If `markdown`, skip Cheerio re-parse and use the markdown directly as `text`. If `html`, run it through Cheerio for consistency. Tag the returned object with `source: "cloudflare"` so debug output shows which fetcher fired. **Important:** still run `assertSafeUrl(url)` before calling Cloudflare — we don't outsource SSRF defense to a third party.
+- `fetchHomepage(url)` — `fetch` with 5s timeout, User-Agent, follow redirects, verify final domain matches input. Parse with Cheerio, extract `<title>`, meta description, `<main>` or `<body>` text (strip scripts/nav/footer). Return `{ url, text, $, fetched_at, source: "cheerio" | "cloudflare" }` or `null`. Expose the Cheerio `$` so `extractCompanyName` and `fetchLinkedPages` can reuse it without re-parsing. **Fallback to Cloudflare Browser Rendering** when Cheerio extraction returns <200 chars of meaningful text — the JS-only sites case (Webflow, Framer, heavy Next.js marketing).
+- `fetchCloudflareContent(url)` — POST to `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/browser-rendering/content` with `Authorization: Bearer ${CF_TOKEN}` and `{url}` body. 15s timeout (real-browser render takes 2-5s typical, 10s+ on cold starts). Response shape is `{ success: bool, result: string, errors?: [...] }` where `result` is the full post-JS HTML — run it through Cheerio for consistent text extraction. Tag the returned object with `source: "cloudflare"` so debug output shows which fetcher fired. **Important:** still run `assertSafeUrl(url)` before calling Cloudflare — we don't outsource SSRF defense to a third party. We use `/content` rather than `/crawl` because `/crawl` is async/job-based (returns a job ID, you poll for results) and walks multiple pages from a seed — we only need the homepage rendered, and we discover `/about` + `/team` ourselves via cheap Cheerio fetches.
 
 **Cheerio → Cloudflare fallback flow:**
 
@@ -879,7 +879,7 @@ Cover in this order (the order matters — #2 is deliberately early so the revie
 
 4. **How to run locally** — `.env` setup, `bun install`, `bun run dev`.
 5. **How to run the eval** — `bun run eval` (against localhost) or `EVAL_TARGET=https://bizzy-demo.fly.dev EVAL_DEMO_KEY=<key> bun run eval` (against deploy).
-6. **Where it's weak** — contacts for SMEs, no caching, English-only. (JS-heavy sites are handled by the Cloudflare Browser Run fallback when CF credentials are configured; without them, those sites degrade to Cheerio output.)
+6. **Where it's weak** — contacts for SMEs, no caching, English-only. (JS-heavy sites are handled by the Cloudflare Browser Rendering fallback when CF credentials are configured; without them, those sites degrade to Cheerio output.)
 7. **What's next** — Proxycurl/PDL/Cognism for contacts, streaming output, expand eval to 50+ companies, eager Cloudflare prefetch for known-JS-heavy domains.
 8. **What I deliberately didn't build, and why** — one paragraph explaining the LinkedIn omission: *"Direct LinkedIn scraping is the obvious source for contacts but a dead end at any scale — HTTP 999, authwalls, TLS fingerprinting, and legal exposure that survived hiQ v LinkedIn. The production path is a paid provider (Proxycurl, PDL, or Cognism for EU). In v0 I chose to extract only from the company's own pages and document the gap rather than ship a flaky LinkedIn scraper that would feel dishonest."*
 
@@ -899,7 +899,7 @@ Cover in this order (the order matters — #2 is deliberately early so the revie
 ## Honest list of things that will probably break
 
 - A Belgian SME will often return 0 contacts and 0–1 news articles even with Google News RSS. Expected. Make sure the UI shows this honestly rather than padding.
-- Cloudflare Browser Run cold starts can hit ~10s on first call to a region. Subsequent calls within the same minute are fast. The fallback's 15s timeout covers this; on timeout, the empty Cheerio result is returned.
+- Cloudflare Browser Rendering cold starts can hit ~10s on first call to a region. Subsequent calls within the same minute are fast. The fallback's 15s timeout covers this; on timeout, the empty Cheerio result is returned.
 - Cloudflare's free tier rate limits (typically 10 req/min on Browser Rendering free) can throttle if a reviewer mass-runs the eval against deployed. Eval already paces 1s between calls, but 10 companies × 1 CF call when triggered = potentially 10 CF calls ≈ at the limit. Keep an eye on `debug.failures` for `cloudflare_rate_limited`.
 - Tavily sometimes returns wrong-company results for generic names. The citation validator catches some of this but not all.
 - Claude occasionally returns a citation that points to a chunk which doesn't literally contain the entity (especially CEO names). The containment validator catches this.

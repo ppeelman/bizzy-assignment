@@ -13,7 +13,7 @@ We fetch real sources in parallel and hand them to Claude using the **Citations 
 ## 1. Architecture — input URL → output JSON
 
 ```
-   URL → SSRF guard → Homepage (Cheerio, CF /scrape fallback)
+   URL → SSRF guard → Homepage (Cheerio, CF /content fallback)
                             │
               ┌─────────────┼─────────────┐
               ▼             ▼             ▼
@@ -32,12 +32,12 @@ We fetch real sources in parallel and hand them to Claude using the **Citations 
 
 **Why each component:**
 
-- **Cheerio first, Cloudflare `/scrape` as fallback.** Cheerio is fast (<200ms) and works on most sites. JS-heavy sites (Webflow, Framer) return almost no text — for those we call Cloudflare's `/scrape` endpoint, which renders the page in a real browser (~2–5s). Both paths follow redirects step by step and re-check each hop against the SSRF guard.
+- **Cheerio first, Cloudflare Browser Rendering `/content` as fallback.** Cheerio is fast (<200ms) and works on most sites. JS-heavy sites (Webflow, Framer) return almost no text — for those we call Cloudflare's `/browser-rendering/content` endpoint, which renders the page in a real headless Chromium and returns the post-JS HTML (~2–5s). We use `/content` rather than `/crawl` because we only need the homepage rendered: linked-page discovery (`/about`, `/team`) is done by walking the homepage's `<a href>` tags ourselves and re-fetching with Cheerio, which is cheaper and more targeted than a generic crawl. `/crawl` is also async/job-based, which doesn't fit a single-request pipeline. Both paths follow redirects step by step and re-check each hop against the SSRF guard.
 - **Tavily + Google News RSS together.** Tavily gives short snippets we can cite. Google News RSS is free and locale-aware, so it picks up Belgian press (De Tijd, L'Echo) that Tavily often misses. RSS only needs to give us a title, url, and date for the `news` field.
 - **Citations API, with a substring fallback.** Best case: Claude attaches a `cited_text` span to each fact, and we match the model's `supporting_quote` to that span. In practice the model sometimes skips the citation path when answering in JSON (we saw this on `microsoft.com`: 12 docs, 0 citations). When that happens we check whether the `supporting_quote` appears verbatim in any document we sent. Same guarantee, different route. If neither works, the field is marked `inferred` and dropped.
 - **`{value, supporting_quote}` instead of a tool-use schema.** Citations attach to text spans, not JSON fields. Matching by content (not by position) survives small drift in whitespace, quotes, and case.
 
-**Cost note.** Tavily and Cloudflare `/scrape` both run on their free tiers, which is enough for the demo and the eval. For Claude I bought some Anthropic credits; Sonnet on a typical enrichment is a few cents per call.
+**Cost note.** Tavily and Cloudflare Browser Rendering both run on their free tiers, which is enough for the demo and the eval. For Claude I bought some Anthropic credits; Sonnet on a typical enrichment is a few cents per call.
 
 ---
 
@@ -59,8 +59,8 @@ The same pipeline runs for every size of company because the grounding rules are
 We use four layers. Any one of them is enough on its own to drop a fabricated claim:
 
 1. **Two-stage grounding.** First we try to match the model's `supporting_quote` against a `cited_text` span returned by the Citations API. If the API returned no citations, we fall back to checking whether the `supporting_quote` appears verbatim in any of the documents we sent. If either match works, the field is `verified`. If neither does, it's marked `inferred` and dropped.
-2. **Entity containment.** Claude can cite a span like *"our leadership team"* and still attach a name like *"CEO: Sarah Chen"* to it. For every entity (person, date, amount), we check whether the entity actually appears as a substring of the quoted span. If it doesn't, the field is dropped.
-3. **Source quality gate.** Before we even call the model, the final fetched URL has to match the input domain (eTLD+1, via `tldts`), the page has to return at least 200 characters, and at least one source has to have succeeded. If those checks fail, we skip Claude and return an error instead.
+2. **Entity containment.** Claude can cite a span like *"our leadership team"* and still attach a name like *"CEO: Sarah Chen"* to it. For each contact's `name` and each news item's `title`, we check that the value actually appears as a substring of its supporting quote. If it doesn't, the contact or news item is dropped. (We apply this to the two slots where a fabricated atom would do most damage to a sales rep — names and headlines — not to every field.)
+3. **Source quality gate.** Before we call the model, the homepage has to come back with at least 100 characters of text, and the redirect chain has to stay on the input eTLD+1 (`tldts`-based same-site check on every hop, re-validated through the SSRF guard). If the homepage fetch fails or comes back thin, we skip Claude and return `source_fetch_failed`. The other fetchers (`/about`, `/team`, Tavily, GNews) are best-effort — their failures land in `_debug.failures` but don't abort the request.
 4. **LLM-URL trust boundary.** Any URL that Claude emits in `news[].url` has to parse as `http(s):`. This blocks prompt-injected `javascript:` or `data:` URLs that would otherwise render as a clickable link in the UI.
 
 Every field in the output has a `confidence` value of `verified`, `inferred`, or `unknown`, plus a `source_url` when it's verified. The UI shows this as a colored dot, a text label, and a clickable source link. Reps can trust `verified` fields and double-check `inferred` ones. Because the label is text and not just color, the signal still works in grayscale and for colorblind users.
@@ -73,7 +73,7 @@ The brief asked how confident we are in the output. That question shaped every s
 
 **Invested:**
 - **Citations + validator** — the grounding spine. Without it, nothing else matters.
-- **Eval harness** with 10 companies across four tiers (big US, mid EU, small Belgian, deliberately obscure). Real numbers instead of claims.
+- **Eval harness** with 7 companies across four tiers (big US, mid EU, small Belgian, deliberately obscure). Real numbers instead of claims.
 - **Fly.io deploy** with a one-step password unlock so the reviewer can hit a URL instead of cloning the repo.
 - **Smoke tests on the riskiest paths** (5 files, 40 cases): SSRF, validator containment, citation reconciliation, auth middleware, env validation. Not full coverage — just the failure modes that would otherwise ship a broken product silently.
 
@@ -81,7 +81,7 @@ The brief asked how confident we are in the output. That question shaped every s
 - **LinkedIn contacts.** Direct LinkedIn scraping is a dead end at any scale: HTTP 999 responses, authwalls, TLS fingerprinting, and legal exposure since the hiQ ruling. Production would use Proxycurl, PDL, or Cognism, but adding one of those would break the "runs without a paid account" rule. v0 only extracts contacts from the company's own pages, so SMEs will often return 0–2 contacts.
 - **No caching.** Production would cache by URL plus a source-version hash. v0 hits live sources every time.
 - **No streaming.** Honest gap. End-to-end is 8–12 seconds; the brief promises "seconds", which production would hit with streaming output and aggressive caching.
-- **No Playwright.** Cloudflare's `/scrape` endpoint covers the JS-render case without us shipping a headless browser in the container.
+- **No Playwright.** Cloudflare's Browser Rendering `/content` endpoint covers the JS-render case without us shipping a headless browser in the container.
 - **English-only prompts.** Locale-aware Google News queries partly make up for it.
 
 Everything we cut is named here, not hidden. That's the same instinct as labelling a field `inferred` instead of letting Claude make something up.
@@ -130,10 +130,10 @@ These plan-mode reviews caught issues that would otherwise have shown up mid-bui
 ## Known weaknesses
 
 - Contacts are thin for SMEs because we only extract from their own pages. Production would need a paid provider.
-- Cloudflare's `/scrape` endpoint needs a token in `.env` (free tier is enough). Anyone cloning the repo needs a Cloudflare account; without one, JS-only sites just return empty Cheerio output.
+- Cloudflare's Browser Rendering `/content` endpoint needs a token in `.env` (free tier is enough). Anyone cloning the repo needs a Cloudflare account; without one, JS-only sites just return empty Cheerio output.
 - Sites with strong bot management (Tesla, Apple, etc.) defeat both Cheerio and Cloudflare. The pipeline returns `source_fetch_failed` in those cases. Production would use a residential-proxy scraping API.
 - Google News RSS is an unofficial endpoint and indexes less than the web UI. Small SMEs sometimes return 0 items even when the web UI shows hits.
 - No caching, so repeated enrichments hit the live sources every time.
 - Prompts are English-only. Locale detection by TLD is crude — `.be` defaults to `nl-BE`, which misses Wallonia, so we also query `fr-BE` for `.be` domains.
-- 10 companies is too small for meaningful precision and recall. Production would want 50–100 or more.
+- 7 companies is too small for meaningful precision and recall. Production would want 50–100 or more.
 - No deduplication of concurrent requests for the same URL. Fine for a prototype.

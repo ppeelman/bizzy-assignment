@@ -12,7 +12,7 @@ A URL → enriched company profile, with every quotable claim tied to a source s
 
 ## What it does
 
-You paste a company URL. The pipeline fetches the homepage (Cheerio, with a Cloudflare Browser Run fallback for JS-only sites), `/about` and `/team`, Tavily for citable news snippets, and Google News RSS (locale-aware) for press in the company's region. Claude reads the bundle and emits structured JSON where every fact carries a `supporting_quote`. A post-validator drops any field whose quote isn't either present in a returned API citation or a verbatim substring of one of the source documents (two-stage grounding), and drops any contact whose name isn't literally in the quoted span. The UI labels each field `verified` (grounded + entity-confirmed), `inferred` (synthesized across sources), or `unknown` (sources didn't support it).
+You paste a company URL. The pipeline fetches the homepage (Cheerio, with a Cloudflare Browser Rendering fallback for JS-only sites), `/about` and `/team`, Tavily for citable news snippets, and Google News RSS (locale-aware) for press in the company's region. Claude reads the bundle and emits structured JSON where every fact carries a `supporting_quote`. A post-validator drops any field whose quote isn't either present in a returned API citation or a verbatim substring of one of the source documents (two-stage grounding), and drops any contact whose name isn't literally in the quoted span. The UI labels each field `verified` (grounded + entity-confirmed), `inferred` (synthesized across sources), or `unknown` (sources didn't support it).
 
 ## Live demo
 
@@ -37,7 +37,7 @@ cp .env.example .env
 # Recommended:
 #   TAVILY_API_KEY         broader news coverage; without it only Google News RSS is queried
 # Optional:
-#   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN   JS-heavy site fallback (Browser Run)
+#   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN   JS-heavy site fallback (Browser Rendering /content)
 #   DEMO_KEY               enables shared-secret auth + rate limit (required in prod)
 #   ANTHROPIC_MODEL        defaults to claude-sonnet-4-5-20250929
 #   LOG_LEVEL              info (trace|debug|info|warn|error|fatal|silent)
@@ -82,7 +82,7 @@ Five files cover the riskiest paths: SSRF rejection, citation reconciliation, va
 See `docs/DESIGN.md` for the full design and `docs/BUILD_PLAN.md` for the phase-by-phase implementation plan.
 
 ```
-URL → SSRF guard → homepage fetch (Cheerio → CF Browser Run) →
+URL → SSRF guard → homepage fetch (Cheerio → CF Browser Rendering /content) →
    ┌─ /about + /team (Cheerio)
    ├─ Tavily search
    └─ Google News RSS (locale-aware)
@@ -94,7 +94,7 @@ Three layers prevent the rep from ever seeing a fabricated fact:
 
 1. **Two-stage grounding.** First-pass: Claude's Citations API returns a `cited_text` span — match Claude's `supporting_quote` against it. Second-pass (fallback): if the API didn't fire citations on this generation, accept the quote when it appears verbatim as a substring of one of the source documents we sent. Both signals yield `verified`; failing both → `inferred` and the field is dropped from contacts/news.
 2. **Entity containment** — if the quoted span doesn't literally contain the name/headline, drop it.
-3. **Source-quality gate** — if every fetcher fails, return an error, never a confident-but-empty Claude response.
+3. **Source-quality gate** — if the homepage fetch fails or returns under 100 chars of text, we skip Claude and return `source_fetch_failed`. Other fetchers (`/about`, `/team`, Tavily, GNews) are best-effort — their failures land in `_debug.failures` without aborting.
 
 Plus a fourth, narrower layer: **LLM URL guard.** Any `news[].url` Claude emits is rejected unless it parses as `http(s):` — defends against prompt-injected `javascript:` / `data:` URLs that would otherwise render as a clickable `<a href>`.
 
@@ -106,7 +106,7 @@ Plus a fourth, narrower layer: **LLM URL guard.** Any `news[].url` Claude emits 
 - **TLD-based locale is crude** — `.be` is queried as both `nl-BE` and `fr-BE`, but Wallonia vs Flanders coverage isn't perfect.
 - **No streaming** — the full result lands at once; production would stream summary first, then enrich.
 - **Eval at 7 companies** is too small for real precision/recall. Production wants 50–100+.
-- **Sites with aggressive anti-bot blocking** — large enterprise sites (e.g. `tesla.com`, `apple.com`) front their homepages with Akamai / Cloudflare Bot Management that fingerprint TLS + IP and return `403` to anything from a datacenter, regardless of User-Agent. Cheerio fails fast, the Cloudflare Browser Run fallback often gets blocked too because Tesla et al. recognise its fingerprint. The pipeline degrades gracefully (`source_fetch_failed`, never a fabricated result) and the new structured logs surface the exact failure (`status: 403`, CF `success: false`, etc.). Production path: a residential-proxy scraping API tier (ScrapingBee / ScraperAPI / ZenRows, ~$0.001/req) wired into the same `Scraper` seam.
+- **Sites with aggressive anti-bot blocking** — large enterprise sites (e.g. `tesla.com`, `apple.com`) front their homepages with Akamai / Cloudflare Bot Management that fingerprint TLS + IP and return `403` to anything from a datacenter, regardless of User-Agent. Cheerio fails fast, the Cloudflare Browser Rendering fallback often gets blocked too because Tesla et al. recognise its fingerprint. The pipeline degrades gracefully (`source_fetch_failed`, never a fabricated result) and the new structured logs surface the exact failure (`status: 403`, CF `success: false`, etc.). Production path: a residential-proxy scraping API tier (ScrapingBee / ScraperAPI / ZenRows, ~$0.001/req) wired into the same `Scraper` seam.
 - **Google News RSS misses small SMEs** — `news.google.com/rss/search` is restricted to articles Google's News aggregator has indexed, which is a much narrower set than what the `news.google.com` web UI surfaces (the UI blends in web/blog/press-release results for low-volume queries). For small Belgian companies the RSS feed routinely returns 0 items even when the UI shows hits. Tavily compensates when configured; for production this is the reason the design calls for a contracted news API.
 
 ## What's next
@@ -114,7 +114,7 @@ Plus a fourth, narrower layer: **LLM URL guard.** Any `news[].url` Claude emits 
 - Paid contacts provider integration (Proxycurl / Cognism for EU SMEs).
 - Streaming output via SSE so summary + industry render before contacts/news land.
 - Expand the eval to 50+ companies with a "this is wrong" feedback channel feeding the eval set.
-- Eager Cloudflare Browser Run prefetch for known JS-heavy domains (currently we wait for thin Cheerio output before falling back).
+- Eager Cloudflare Browser Rendering prefetch for known JS-heavy domains (currently we wait for thin Cheerio output before falling back).
 - Per-tenant cost guards once the cache exists.
 
 ## What I deliberately didn't build, and why

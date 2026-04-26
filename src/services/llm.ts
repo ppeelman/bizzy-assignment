@@ -107,9 +107,12 @@ export class AnthropicLLMService implements LLMClient {
     );
 
     const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
+    // Concatenate with empty string: when the Citations API fires, the model splits its output
+    // into multiple text blocks (one per cited span). They're meant to be joined directly —
+    // joining with "\n" would corrupt JSON strings if a citation lands mid-value.
     const rawText = textBlocks
       .map((b) => b.text)
-      .join("\n")
+      .join("")
       .trim();
 
     const citations: NormalizedCitation[] = [];
